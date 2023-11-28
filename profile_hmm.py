@@ -1,7 +1,8 @@
 import argparse
 import read_alignment as ra
 
-TRANSITIONS = ("MM", "MI", "MD", "IM", "II", "ID", "DM", "DI", "DD")
+TRANSITIONS = ("BM", "BI", "BD", "MM", "MI", "MD", "IM",
+               "II", "ID", "DM", "DI", "DD", "ME", "IE", "DE")
 AMINO_ACIDS = "ACDEFGHIKLMNPQRSTVWY"
 END = "END"
 
@@ -35,7 +36,7 @@ def get_alignment_columns(multiple_alignment):
 
 def get_alignment_columns_with_match_states(multiple_alignment):
     """
-    Same as get_alignment_columns, but replaces dashes in non-match alignment columns with periods.
+    Same as get_alignment_columns, but replaces dashes in non-match alignment columns with pound signs.
     """
     match_states, match_pattern = get_match_states(multiple_alignment)
     alignment_columns = get_alignment_columns(multiple_alignment)
@@ -45,7 +46,7 @@ def get_alignment_columns_with_match_states(multiple_alignment):
         if match:
             new_alignment_columns.append(col)
         else:
-            new_alignment_columns.append(col.replace('-', '$'))
+            new_alignment_columns.append(col.replace('-', '#'))
 
     return new_alignment_columns
 
@@ -81,9 +82,10 @@ def get_transition_counts(multiple_alignment, pseudocount=0):
     """
     Given a multiple alignment, returns a list of dictionaries, where each dictionary contains the number of times each type of transition appears each column corresponding to a match state.
     """
+    num_sequences = len(multiple_alignment)
     match_states, match_pattern = get_match_states(multiple_alignment)
-    alignment_columns = get_alignment_columns_with_match_states(
-        multiple_alignment)
+    alignment_columns = ["^" * num_sequences] + get_alignment_columns_with_match_states(
+        multiple_alignment) + ["$" * num_sequences]
 
     # Group alignment columns by match states
     match_groups = [[] for _ in range(match_states)]
@@ -99,8 +101,6 @@ def get_transition_counts(multiple_alignment, pseudocount=0):
     transitions = []
     for group in match_groups:
         transitions.append([''.join(e) for e in list(zip(*group))])
-
-    print(transitions)
 
     transition_counts = [
         get_transition_counts_helper(t, pseudocount) for t in transitions]
@@ -118,25 +118,30 @@ def get_transition_counts_helper(transitions, pseudocount):
     Returns:
         - transition_counts: a dictionary with the number of times each type of transition appears in the list
     """
+    print(transitions)
     transition_counts = {t: pseudocount for t in TRANSITIONS}
-    for string in transitions:
-        clean_str = string.replace("$", "")
+    for k, string in enumerate(transitions):
+        clean_str = string.replace("#", "")
         str_len = len(clean_str)
         if str_len < 2:
             return END
         elif str_len == 2:
-            key = ('D' if clean_str[0] == '-' else 'M') + \
-                ('D' if clean_str[1] == '-' else 'M')
+            key = ('B' if clean_str[0] == '^' else 'D' if clean_str[0] == '-' else 'M') + \
+                ('E' if clean_str[1] ==
+                 '$' else 'D' if clean_str[1] == '-' else 'M')
             transition_counts[key] += 1
         else:
             pairs = [clean_str[i:i+2] for i in range(len(string) - 1)]
 
             start_pair = pairs.pop(0)
-            start_key = ('D' if start_pair[0] == '-' else 'M') + 'I'
+            start_key = (
+                'B' if start_pair[0] == '^' else 'D' if start_pair[0] == '-' else 'M') + 'I'
             transition_counts[start_key] += 1
 
             end_pair = pairs.pop(-1)
-            end_key = 'I' + ('D' if end_pair[1] == '-' else 'M')
+            end_key = 'I' + \
+                ('E' if end_pair[1] ==
+                 '$' else 'D' if end_pair[1] == '-' else 'M')
             transition_counts[end_key] += 1
 
             for _ in pairs:
@@ -193,9 +198,10 @@ if __name__ == '__main__':
     # print(get_match_states(sequences))
     # print(get_alignment_columns(sequences))
     # print(get_alignment_columns_with_match_states(sequences))
-    # print(get_transition_counts(sequences, 0))
+    x = get_transition_counts(sequences, 0)
+    [print(f"{x[i]}\n") for i in range(len(x))]
     # print(get_emission_counts(sequences))
 
-    print("\n\n\n\n")
+    # print("\n\n\n\n")
 
-    print(get_emission_matrix(sequences, 1)[0])
+    # print(get_emission_matrix(sequences, 0)[0])
