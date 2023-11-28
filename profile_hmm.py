@@ -2,6 +2,7 @@ import argparse
 import read_alignment as ra
 
 TRANSITIONS = ("MM", "MI", "MD", "IM", "II", "ID", "DM", "DI", "DD")
+AMINO_ACIDS = "ACDEFGHIKLMNPQRSTVWY"
 END = "END"
 
 
@@ -143,6 +144,41 @@ def get_transition_counts_helper(transitions, pseudocount):
     return transition_counts
 
 
+def get_emission_counts(multiple_alignment, pseudocount=0):
+    match_states, match_pattern = get_match_states(multiple_alignment)
+    alignment_columns = get_alignment_columns(multiple_alignment)
+    emission_counts_list = []
+
+    for col, match in zip(alignment_columns, match_pattern):
+        emission_counts = {a: pseudocount for a in AMINO_ACIDS}
+        if match:
+            for char in col:
+                if char != '-':
+                    emission_counts[char] += 1
+        emission_counts_list.append(emission_counts)
+
+    return emission_counts_list
+
+
+def get_emission_matrix(multiple_alignment, pseudocount=0):
+    """
+    Given a multiple alignment, returns a list of dictionaries, where each dictionary contains the emission probabilities for each column corresponding to a match state.
+    """
+    emission_counts = get_emission_counts(multiple_alignment, pseudocount)
+    emission_totals = [sum(emission_counts[i].values())
+                       for i in range(len(emission_counts))]
+    emission_matrix = []
+
+    for j, col in enumerate(emission_counts):
+        emission_probabilities = {
+            a: col[a] / emission_totals[j] for a in AMINO_ACIDS}
+        emission_matrix.append(emission_probabilities)
+
+    print(emission_totals)
+
+    return emission_matrix
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('alignment_file', type=str,
@@ -154,4 +190,9 @@ if __name__ == '__main__':
     # print(get_match_states(sequences))
     # print(get_alignment_columns(sequences))
     # print(get_alignment_columns_with_match_states(sequences))
-    print(get_transition_counts(sequences, 0))
+    # print(get_transition_counts(sequences, 0))
+    print(get_emission_counts(sequences))
+
+    print("\n\n\n\n")
+
+    print(get_emission_matrix(sequences, 1)[0])
