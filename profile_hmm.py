@@ -174,7 +174,10 @@ def get_emission_matrix(multiple_alignment, pseudocount=0):
             a: col[a] / emission_totals[j] for a in AMINO_ACIDS}
         emission_matrix.append(emission_probabilities)
 
+    print(emission_counts)
+    print("\n\n\n")
     print(emission_totals)
+    print("\n\n\n")
 
     return emission_matrix
 
@@ -191,7 +194,7 @@ if __name__ == '__main__':
     # print(get_alignment_columns(sequences))
     # print(get_alignment_columns_with_match_states(sequences))
     # print(get_transition_counts(sequences, 0))
-    print(get_emission_counts(sequences))
+    # print(get_emission_counts(sequences))
 
     print("\n\n\n\n")
 
