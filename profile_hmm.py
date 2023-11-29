@@ -9,15 +9,30 @@ TRANSITIONS = ("BM", "BI", "BD", "MM", "MI", "MD", "IM",
 BEGIN_TRANSITIONS = ("BM", "BI", "BD", "IM", "II", "ID")
 MIDDLE_TRANSITIONS = ("MM", "MI", "MD", "IM", "II", "ID", "DM", "DI", "DD")
 END_TRANSITIONS = ("MI", "ME", "II", "IE", "DI", "DE")
+
 AMINO_ACIDS = "ACDEFGHIKLMNPQRSTVWY"
 
 
 class ProfileHMM:
-    def __init__(self, alphabet, states, transition, emission):
-        self.alphabet = alphabet
-        self.states = states
-        self.transition = transition
-        self.emission = emission
+    def __init__(self, multiple_alignment, pseudocount=0.1):
+        self.num_match_states, _ = get_match_states(multiple_alignment)
+        self.transition_matrix = get_transition_matrix(
+            multiple_alignment, pseudocount)
+        self.emission_matrix = get_emission_matrix(
+            multiple_alignment, pseudocount)
+
+    def align_sequence(self, sequence):
+        """
+        Given a sequence, returns the most probable path through the profile HMM.
+
+        Args:
+            - sequence: a string representing a sequence
+
+        Returns:
+            - path: a string representing the most probable path through the profile HMM
+        """
+        path = ""
+        return path
 
 
 def get_alignment_columns(multiple_alignment):
@@ -166,6 +181,9 @@ def get_transition_counts_helper(transitions):
 
 
 def get_transition_matrix(multiple_alignment, pseudocount=0.1):
+    """
+    Given a multiple alignment, returns a list of dictionaries, where each dictionary contains the transition probabilities for each column corresponding to a match state.
+    """
     transition_counts = get_transition_counts(multiple_alignment)
     match_states, match_pattern = get_match_states(multiple_alignment)
 
@@ -178,8 +196,8 @@ def get_transition_matrix(multiple_alignment, pseudocount=0.1):
         totals = get_transition_totals(counts)
         possible_transitions = get_transition_possibilities(transitions)
         for key in transitions:
-            transitions[key] = (counts[key] + pseudocount) / \
-                (totals[key[0]] + (possible_transitions[key[0]] * pseudocount))
+            transitions[key] = np.log((counts[key] + pseudocount) /
+                                      (totals[key[0]] + (possible_transitions[key[0]] * pseudocount)))
 
     return transition_matrix
 
@@ -228,34 +246,37 @@ def get_transition_possibilities(transition_counts):
     return counts
 
 
-def get_emission_counts(multiple_alignment, pseudocount=0):
+def get_emission_counts(multiple_alignment):
+    """
+    Given a multiple alignment, returns a list of dictionaries, where each dictionary contains the number of times each amino acid appears in each column corresponding to a match state.
+    """
     match_states, match_pattern = get_match_states(multiple_alignment)
     alignment_columns = get_alignment_columns(multiple_alignment)
     emission_counts_list = []
 
     for col, match in zip(alignment_columns, match_pattern):
-        emission_counts = {a: pseudocount for a in AMINO_ACIDS}
+        emission_counts = {a: 0 for a in AMINO_ACIDS}
         if match:
             for char in col:
                 if char != '-':
                     emission_counts[char] += 1
-        emission_counts_list.append(emission_counts)
+            emission_counts_list.append(emission_counts)
 
     return emission_counts_list
 
 
-def get_emission_matrix(multiple_alignment, pseudocount=0):
+def get_emission_matrix(multiple_alignment, pseudocount=0.1):
     """
     Given a multiple alignment, returns a list of dictionaries, where each dictionary contains the emission probabilities for each column corresponding to a match state.
     """
-    emission_counts = get_emission_counts(multiple_alignment, pseudocount)
+    emission_counts = get_emission_counts(multiple_alignment)
     emission_totals = [sum(emission_counts[i].values())
                        for i in range(len(emission_counts))]
     emission_matrix = []
 
     for j, col in enumerate(emission_counts):
         emission_probabilities = {
-            a: col[a] / emission_totals[j] for a in AMINO_ACIDS}
+            a: np.log((col[a] + pseudocount) / (emission_totals[j] + len(AMINO_ACIDS * pseudocount))) for a in AMINO_ACIDS}
         emission_matrix.append(emission_probabilities)
 
     return emission_matrix
@@ -270,6 +291,11 @@ if __name__ == '__main__':
         args.alignment_file, args.alignment_file[args.alignment_file.find('.') + 1:])
 
     # Print transition matrix
-    print(f"{'=-' * 20}\n\nTRANSITION MATRIX\n\n{'=-' * 20}\n")
+    print(f"\n{'=-' * 20}\n\nTRANSITION MATRIX\n\n{'=-' * 20}\n")
     tm = get_transition_matrix(sequences, 1)
     [print(f"{tm[i]}\n") for i in range(len(tm))]
+
+    # Print emission matrix
+    print(f"\n{'=-' * 20}\n\nEMISSION MATRIX\n\n{'=-' * 20}\n")
+    em = get_emission_matrix(sequences, 1)
+    [print(f"{em[i]}\n") for i in range(len(em))]

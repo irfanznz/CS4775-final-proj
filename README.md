@@ -8,7 +8,6 @@ This is a project where we try to reimplement a profile-HMM based multiple seque
 
 ### Model-related stuff
 
--   Fix correctness of emission probabilities for match states
 -   Get background probabilities of amino acids for use as emission probabilities for insert states
 -   Convert probabilities into log form
 
