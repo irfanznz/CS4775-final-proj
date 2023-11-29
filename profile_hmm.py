@@ -1,10 +1,15 @@
 import argparse
+import numpy as np
 import read_alignment as ra
+
 
 TRANSITIONS = ("BM", "BI", "BD", "MM", "MI", "MD", "IM",
                "II", "ID", "DM", "DI", "DD", "ME", "IE", "DE")
+
+BEGIN_TRANSITIONS = ("BM", "BI", "BD", "IM", "II", "ID")
+MIDDLE_TRANSITIONS = ("MM", "MI", "MD", "IM", "II", "ID", "DM", "DI", "DD")
+END_TRANSITIONS = ("MI", "ME", "II", "IE", "DI", "DE")
 AMINO_ACIDS = "ACDEFGHIKLMNPQRSTVWY"
-END = "END"
 
 
 class ProfileHMM:
@@ -36,7 +41,17 @@ def get_alignment_columns(multiple_alignment):
 
 def get_alignment_columns_with_match_states(multiple_alignment):
     """
-    Same as get_alignment_columns, but replaces dashes in non-match alignment columns with pound signs.
+    Same as get_alignment_columns, but replaces dashes in non-match alignment columns with pound signs. This is to distinguish gaps due to deletion (in match states) and gaps due to insertion (in non-match states).
+
+    Args:
+        - multiple_alignment: a list of strings representing the sequences in the multiple alignment
+
+    Returns:
+        - columns: a list of columns, where each column is a string of characters, one for each sequence in the alignment. Dashes in non-match columns are replaced with pound signs.
+
+    Example:
+        >>> get_alignment_columns_with_match_states(['ABCE', 'AB-D', 'A--E', 'AC-D'])
+        ['AAAA', 'BB-C', 'C###', 'EDED']
     """
     match_states, match_pattern = get_match_states(multiple_alignment)
     alignment_columns = get_alignment_columns(multiple_alignment)
@@ -78,14 +93,14 @@ def get_match_states(multiple_alignment):
     return (match_states, match_pattern)
 
 
-def get_transition_counts(multiple_alignment, pseudocount=0):
+def get_transition_counts(multiple_alignment):
     """
     Given a multiple alignment, returns a list of dictionaries, where each dictionary contains the number of times each type of transition appears each column corresponding to a match state.
     """
     num_sequences = len(multiple_alignment)
     match_states, match_pattern = get_match_states(multiple_alignment)
-    alignment_columns = ["^" * num_sequences] + get_alignment_columns_with_match_states(
-        multiple_alignment) + ["$" * num_sequences]
+    alignment_columns = get_alignment_columns_with_match_states(
+        multiple_alignment)
 
     # Group alignment columns by match states
     match_groups = [[] for _ in range(match_states)]
@@ -97,18 +112,22 @@ def get_transition_counts(multiple_alignment, pseudocount=0):
                 match_groups[match_index-1].append(alignment_columns[col])
         match_groups[match_index].append(alignment_columns[col])
 
+    # Add begin and end states
+    match_groups = [["^" * num_sequences, match_groups[0][0]]] + match_groups
+    match_groups[-1].append("$" * num_sequences)
+
     # Separate match groups into transitions
     transitions = []
     for group in match_groups:
         transitions.append([''.join(e) for e in list(zip(*group))])
 
     transition_counts = [
-        get_transition_counts_helper(t, pseudocount) for t in transitions]
+        get_transition_counts_helper(t) for t in transitions]
 
     return transition_counts
 
 
-def get_transition_counts_helper(transitions, pseudocount):
+def get_transition_counts_helper(transitions):
     """
     Given a list of transitions, returns a dictionary with the number of times each transition appears in the list.
 
@@ -118,14 +137,11 @@ def get_transition_counts_helper(transitions, pseudocount):
     Returns:
         - transition_counts: a dictionary with the number of times each type of transition appears in the list
     """
-    print(transitions)
-    transition_counts = {t: pseudocount for t in TRANSITIONS}
-    for k, string in enumerate(transitions):
+    transition_counts = {t: 0 for t in TRANSITIONS}
+    for string in transitions:
         clean_str = string.replace("#", "")
         str_len = len(clean_str)
-        if str_len < 2:
-            return END
-        elif str_len == 2:
+        if str_len == 2:
             key = ('B' if clean_str[0] == '^' else 'D' if clean_str[0] == '-' else 'M') + \
                 ('E' if clean_str[1] ==
                  '$' else 'D' if clean_str[1] == '-' else 'M')
@@ -147,6 +163,69 @@ def get_transition_counts_helper(transitions, pseudocount):
             for _ in pairs:
                 transition_counts['II'] += 1
     return transition_counts
+
+
+def get_transition_matrix(multiple_alignment, pseudocount=0.1):
+    transition_counts = get_transition_counts(multiple_alignment)
+    match_states, match_pattern = get_match_states(multiple_alignment)
+
+    transition_matrix = [{t: 0 for t in BEGIN_TRANSITIONS}] + \
+        [{t: 0 for t in MIDDLE_TRANSITIONS} for _ in range(match_states - 1)] + \
+        [{t: 0 for t in END_TRANSITIONS}]
+
+    for i, transitions in enumerate(transition_matrix):
+        counts = transition_counts[i]
+        totals = get_transition_totals(counts)
+        possible_transitions = get_transition_possibilities(transitions)
+        for key in transitions:
+            transitions[key] = (counts[key] + pseudocount) / \
+                (totals[key[0]] + (possible_transitions[key[0]] * pseudocount))
+
+    return transition_matrix
+
+
+def get_transition_totals(transition_counts):
+    """
+    Given a dictionary of transition counts, returns a dictionary with the total number of times each type of transition from a particular state appears in the dictionary.
+
+    Example:
+        >>> get_transition_totals({'BM': 1, 'BI': 2, 'BD': 3})
+        {'B': 6}
+        >>> get_transition_totals({'BM': 1, 'BI': 2, 'BD': 3, 'MM': 4, 'MI': 5, 'MD': 6})
+        {'B': 6, 'M': 15}
+    """
+    combined = {}
+
+    for key, value in transition_counts.items():
+        first_letter = key[0]
+
+        if first_letter in combined:
+            combined[first_letter] += value
+        else:
+            combined[first_letter] = value
+
+    return combined
+
+
+def get_transition_possibilities(transition_counts):
+    """
+    Given a dictionary of transition counts, returns a dictionary with the number of possible transitions from a particular state.
+
+    Example:
+        >>> get_transition_possibilities({'BM': 1, 'BI': 2, 'BD': 3})
+        {'B': 3}
+    """
+    counts = {}
+
+    for key in transition_counts.keys():
+        first_letter = key[0]
+
+        if first_letter in counts:
+            counts[first_letter] += 1
+        else:
+            counts[first_letter] = 1
+
+    return counts
 
 
 def get_emission_counts(multiple_alignment, pseudocount=0):
@@ -179,11 +258,6 @@ def get_emission_matrix(multiple_alignment, pseudocount=0):
             a: col[a] / emission_totals[j] for a in AMINO_ACIDS}
         emission_matrix.append(emission_probabilities)
 
-    print(emission_counts)
-    print("\n\n\n")
-    print(emission_totals)
-    print("\n\n\n")
-
     return emission_matrix
 
 
@@ -194,14 +268,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     sequences = ra.read_alignment(
         args.alignment_file, args.alignment_file[args.alignment_file.find('.') + 1:])
-    # print(sequences)
-    # print(get_match_states(sequences))
-    # print(get_alignment_columns(sequences))
-    # print(get_alignment_columns_with_match_states(sequences))
-    x = get_transition_counts(sequences, 0)
-    [print(f"{x[i]}\n") for i in range(len(x))]
-    # print(get_emission_counts(sequences))
 
-    # print("\n\n\n\n")
-
-    # print(get_emission_matrix(sequences, 0)[0])
+    # Print transition matrix
+    print(f"{'=-' * 20}\n\nTRANSITION MATRIX\n\n{'=-' * 20}\n")
+    tm = get_transition_matrix(sequences, 1)
+    [print(f"{tm[i]}\n") for i in range(len(tm))]
