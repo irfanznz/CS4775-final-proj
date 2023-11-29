@@ -1,4 +1,5 @@
 import argparse
+import json
 import numpy as np
 import read_alignment as ra
 
@@ -10,6 +11,8 @@ BEGIN_TRANSITIONS = ("BM", "BI", "BD", "IM", "II", "ID")
 MIDDLE_TRANSITIONS = ("MM", "MI", "MD", "IM", "II", "ID", "DM", "DI", "DD")
 END_TRANSITIONS = ("MI", "ME", "II", "IE", "DI", "DE")
 
+BACKGROUND_FREQUENCIES = "aa_frequencies.json"
+
 AMINO_ACIDS = "ACDEFGHIKLMNPQRSTVWY"
 
 
@@ -18,8 +21,12 @@ class ProfileHMM:
         self.num_match_states, _ = get_match_states(multiple_alignment)
         self.transition_matrix = get_transition_matrix(
             multiple_alignment, pseudocount)
-        self.emission_matrix = get_emission_matrix(
+        self.m_emission_matrix = get_emission_matrix(
             multiple_alignment, pseudocount)
+        self.i_emission_matrix = {}
+
+        with open(BACKGROUND_FREQUENCIES, 'r') as file:
+            self.i_emission_matrix = json.load(file)
 
     def align_sequence(self, sequence):
         """
@@ -290,12 +297,14 @@ if __name__ == '__main__':
     sequences = ra.read_alignment(
         args.alignment_file, args.alignment_file[args.alignment_file.find('.') + 1:])
 
-    # Print transition matrix
-    print(f"\n{'=-' * 20}\n\nTRANSITION MATRIX\n\n{'=-' * 20}\n")
-    tm = get_transition_matrix(sequences, 1)
-    [print(f"{tm[i]}\n") for i in range(len(tm))]
+    # # Print transition matrix
+    # print(f"\n{'=-' * 20}\n\nTRANSITION MATRIX\n\n{'=-' * 20}\n")
+    # tm = get_transition_matrix(sequences, 1)
+    # [print(f"{tm[i]}\n") for i in range(len(tm))]
 
-    # Print emission matrix
-    print(f"\n{'=-' * 20}\n\nEMISSION MATRIX\n\n{'=-' * 20}\n")
-    em = get_emission_matrix(sequences, 1)
-    [print(f"{em[i]}\n") for i in range(len(em))]
+    # # Print emission matrix
+    # print(f"\n{'=-' * 20}\n\nEMISSION MATRIX\n\n{'=-' * 20}\n")
+    # em = get_emission_matrix(sequences, 1)
+    # [print(f"{em[i]}\n") for i in range(len(em))]
+
+    hmm = ProfileHMM(sequences, 1)
