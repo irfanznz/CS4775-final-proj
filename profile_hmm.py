@@ -38,6 +38,7 @@ class ProfileHMM:
         Returns:
             - path: a string representing the most probable path through the profile HMM
         """
+        sequence = "^" + sequence + "$"
         path = ""
         return path
 
@@ -206,6 +207,16 @@ def get_transition_matrix(multiple_alignment, pseudocount=0.1):
             transitions[key] = np.log((counts[key] + pseudocount) /
                                       (totals[key[0]] + (possible_transitions[key[0]] * pseudocount)))
 
+    # PATCHWORK FIX
+    for i in range(len(transition_matrix)):
+        new_t_mtx = {}
+        for key, value in transition_matrix[i].items():
+            first_letter = key[0]
+            if first_letter not in new_t_mtx:
+                new_t_mtx[first_letter] = {}
+            new_t_mtx[first_letter][key[1:]] = value
+        transition_matrix[i] = new_t_mtx
+
     return transition_matrix
 
 
@@ -297,10 +308,10 @@ if __name__ == '__main__':
     sequences = ra.read_alignment(
         args.alignment_file, args.alignment_file[args.alignment_file.find('.') + 1:])
 
-    # # Print transition matrix
-    # print(f"\n{'=-' * 20}\n\nTRANSITION MATRIX\n\n{'=-' * 20}\n")
-    # tm = get_transition_matrix(sequences, 1)
-    # [print(f"{tm[i]}\n") for i in range(len(tm))]
+    # Print transition matrix
+    print(f"\n{'=-' * 20}\n\nTRANSITION MATRIX\n\n{'=-' * 20}\n")
+    tm = get_transition_matrix(sequences, 1)
+    [print(f"{tm[i]}\n") for i in range(len(tm))]
 
     # # Print emission matrix
     # print(f"\n{'=-' * 20}\n\nEMISSION MATRIX\n\n{'=-' * 20}\n")
@@ -308,3 +319,5 @@ if __name__ == '__main__':
     # [print(f"{em[i]}\n") for i in range(len(em))]
 
     hmm = ProfileHMM(sequences, 1)
+    print(hmm.viterbi("VGA--HAGEY", None, None, None, None))
+    # print(hmm.viterbi("VGA--HAGEY"))
