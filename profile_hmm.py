@@ -28,6 +28,18 @@ class ProfileHMM:
         with open(BACKGROUND_FREQUENCIES, 'r') as file:
             self.i_emission_matrix = json.load(file)
 
+    def viterbi(self, seq):
+        pass
+        N = len(seq)
+        M = self.num_match_states
+        viterbi_matrix = [{} for _ in range(N+1)]
+        backpointer_matrix = [{} for _ in range(N+1)]
+
+        viterbi_matrix[0]["B"] = np.log(1)
+
+        for state in self.transition_matrix[0].keys():
+            viterbi_matrix[1][state]
+
     def align_sequence(self, sequence):
         """
         Given a sequence, returns the most probable path through the profile HMM.
