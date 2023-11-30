@@ -27,32 +27,129 @@ class ProfileHMM:
 
         with open(BACKGROUND_FREQUENCIES, 'r') as file:
             self.i_emission_matrix = json.load(file)
+        for key, value in self.i_emission_matrix.items():
+            self.i_emission_matrix[key] = np.log(value)
+        self.i_emission_matrix['-'] = float("-inf")
 
     def viterbi(self, seq):
-        pass
         N = len(seq)
         M = self.num_match_states
-        viterbi_matrix = [{} for _ in range(N+1)]
-        backpointer_matrix = [{} for _ in range(N+1)]
+        STATES = ["0I"] + \
+            [f"{i}{c}" for i in range(1, M + 1) for c in "MDI"] + ["-1E"]
 
-        viterbi_matrix[0]["B"] = np.log(1)
+        backpointers = {s: "" for s in STATES}
+        backpointers["0B"] = ""
+        viterbi_matrix = [
+            {"0B": 0}] + [{s: float("-inf") for s in STATES} for _ in range(M)] + [{"-1E": 0}]
 
-        for state in self.transition_matrix[0].keys():
-            viterbi_matrix[1][state]
+        for i in range(1, M+1):
+            t = i - 1
+            residue = seq[t]
+            probs = viterbi_matrix[i]
+            prev_probs = viterbi_matrix[i-1]
+            for state in probs.keys():
+                state_type = state[-1]
+                state_num = int(state[:-1])
+                if state_type == "M" and state_num <= i:
+                    p, s = self._get_max_match(
+                        probs, prev_probs, residue, state)
+                    probs[state] = p
+                    if not backpointers[state]:
+                        backpointers[state] = backpointers[s] + s[-1]
+                elif state_type == "D" and state_num <= i:
+                    p, s = self._get_max_delete(
+                        probs, prev_probs, residue, state)
+                    probs[state] = p
+                    if not backpointers[state]:
+                        backpointers[state] = backpointers[s] + s[-1]
+                elif state_type == "I":
+                    # Other-insertion transition
+                    if state_num == t:
+                        p, s = self._get_max_insert(
+                            prev_probs, residue, t)
+                        probs[state] = p
+                        if not backpointers[state]:
+                            backpointers[state] = backpointers[s] + s[-1]
+                    # Insertion-insertion transition
+                    elif state_num < i:
+                        probs[state] = (prev_probs[state] +
+                                        self.transition_matrix[state_num]["I"]["I"] +
+                                        self.i_emission_matrix[residue])
+                        backpointers[state] += "I"
+                elif state_type == "E":
+                    probs[state] = self._get_max_end(prev_probs, M)
 
-    def align_sequence(self, sequence):
-        """
-        Given a sequence, returns the most probable path through the profile HMM.
+            # print("\n" + "=-" * 30)
+            # print(f"\n{probs}\n")
+            # print(f"{backpointers}\n")
+            # print("=-" * 30)
 
-        Args:
-            - sequence: a string representing a sequence
+        # PATCHWORK FIX
+        terminal_states = [(k, backpointers[k])
+                           for k in backpointers.keys() if k[:-1] == str(M)]
+        max_prob = max([v for k, v in terminal_states])
+        max_prob_state = [k for k, v in terminal_states if v == max_prob][0]
 
-        Returns:
-            - path: a string representing the most probable path through the profile HMM
-        """
-        sequence = "^" + sequence + "$"
-        path = ""
-        return path
+        return backpointers[max_prob_state][1:] + max_prob_state[-1]
+
+    def _get_max_match(self, probs, prev_probs, residue, curr_state):
+        curr_state_num = int(curr_state[:-1])
+        potential_probs = {}
+        for prev_state in prev_probs.keys():
+            prev_state_type = prev_state[-1]
+            prev_state_num = int(prev_state[:-1])
+            if prev_state_num == curr_state_num - 1:
+                potential_probs[prev_state] = prev_probs[prev_state] + \
+                    self.transition_matrix[prev_state_num][prev_state_type]["M"] + \
+                    self.m_emission_matrix[curr_state_num-1][residue]
+        max_prob = max(potential_probs.values())
+        max_prob_state = [
+            k for k, v in potential_probs.items() if v == max_prob][0]
+        return max_prob, max_prob_state
+
+    def _get_max_delete(self, probs, prev_probs, residue, curr_state):
+        delete_emission = 0 if residue == "-" else float("-inf")
+        curr_state_num = int(curr_state[:-1])
+        potential_probs = {}
+        for prev_state in prev_probs.keys():
+            prev_state_type = prev_state[-1]
+            prev_state_num = int(prev_state[:-1])
+            if prev_state_num == curr_state_num - 1:
+                potential_probs[prev_state] = prev_probs[prev_state] + \
+                    self.transition_matrix[prev_state_num][prev_state_type]["D"] + \
+                    delete_emission
+
+        max_prob = max(potential_probs.values())
+        max_prob_state = [
+            k for k, v in potential_probs.items() if v == max_prob][0]
+        return max_prob, max_prob_state
+
+    def _get_max_insert(self, prev_probs, residue, t):
+        potential_probs = {}
+        for prev_state in prev_probs.keys():
+            prev_state_type = prev_state[-1]
+            prev_state_num = int(prev_state[:-1])
+            if prev_state_type != "I" and prev_state_num == t:
+                potential_probs[prev_state] = prev_probs[prev_state] + \
+                    self.transition_matrix[t][prev_state_type]["I"] + \
+                    self.i_emission_matrix[residue]
+
+        max_prob = max(potential_probs.values())
+        max_prob_state = [
+            k for k, v in potential_probs.items() if v == max_prob][0]
+        return max_prob, max_prob_state
+
+    def _get_max_end(self, prev_probs, m):
+        potential_probs = [float("-inf")]
+        for state in prev_probs.keys():
+            state_type = state[-1]
+            state_num = int(state[:-1])
+            if state_num == m:
+                potential_probs.append(
+                    prev_probs[state] +
+                    self.transition_matrix[m][state_type]["E"]
+                )
+        return max(potential_probs)
 
 
 def get_alignment_columns(multiple_alignment):
@@ -307,6 +404,7 @@ def get_emission_matrix(multiple_alignment, pseudocount=0.1):
     for j, col in enumerate(emission_counts):
         emission_probabilities = {
             a: np.log((col[a] + pseudocount) / (emission_totals[j] + len(AMINO_ACIDS * pseudocount))) for a in AMINO_ACIDS}
+        emission_probabilities['-'] = float("-inf")
         emission_matrix.append(emission_probabilities)
 
     return emission_matrix
@@ -320,10 +418,10 @@ if __name__ == '__main__':
     sequences = ra.read_alignment(
         args.alignment_file, args.alignment_file[args.alignment_file.find('.') + 1:])
 
-    # Print transition matrix
-    print(f"\n{'=-' * 20}\n\nTRANSITION MATRIX\n\n{'=-' * 20}\n")
-    tm = get_transition_matrix(sequences, 1)
-    [print(f"{tm[i]}\n") for i in range(len(tm))]
+    # # Print transition matrix
+    # print(f"\n{'=-' * 20}\n\nTRANSITION MATRIX\n\n{'=-' * 20}\n")
+    # tm = get_transition_matrix(sequences, 1)
+    # [print(f"{tm[i]}\n") for i in range(len(tm))]
 
     # # Print emission matrix
     # print(f"\n{'=-' * 20}\n\nEMISSION MATRIX\n\n{'=-' * 20}\n")
@@ -331,5 +429,5 @@ if __name__ == '__main__':
     # [print(f"{em[i]}\n") for i in range(len(em))]
 
     hmm = ProfileHMM(sequences, 1)
-    print(hmm.viterbi("VGA--HAGEY", None, None, None, None))
-    # print(hmm.viterbi("VGA--HAGEY"))
+    print(hmm.viterbi("VGA--HAGEY"))
+    print(hmm.viterbi("EFGHIKLM"))
