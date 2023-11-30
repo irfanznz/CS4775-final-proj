@@ -149,6 +149,34 @@ class ProfileHMM:
             k for k, v in potential_probs.items() if v == max_prob][0]
         return max_prob, max_prob_state
 
+    def align_sequences(self, sequences):
+        """
+        Given a state path, returns the corresponding alignment of the provided sequence.
+        """
+        state_paths = [self.viterbi(seq) for seq in sequences]
+        alignment = []
+        for path in state_paths:
+            alignment.append(self._get_alignment(sequences[0], path))
+        return alignment
+
+    def _get_alignment(self, seq, path):
+        alignment = ""
+        for i, state in enumerate(path):
+            if state == "M":
+                alignment += seq[i].upper()
+            elif state == "D":
+                alignment += "-"
+            elif state == "I":
+                alignment += seq[i].lower()
+        return alignment
+
+    def align_sequence(self, sequence):
+        """
+        Given a state path, returns the corresponding alignment of the provided sequence.
+        """
+        state_path = self.viterbi(sequence)
+        return self._get_alignment(sequence, state_path)
+
 
 def get_alignment_columns(multiple_alignment):
     """
@@ -427,4 +455,9 @@ if __name__ == '__main__':
     # [print(f"{em[i]}\n") for i in range(len(em))]
 
     hmm = ProfileHMM(sequences, 1)
-    print(hmm.viterbi("VGA--HAGEY"))
+    print("=-" * 30 + "\n")
+    print("Original sequence: IAGADNGAGV")
+    print(f"Computed alignment: {hmm.align_sequence('IAGADNGAGV')}")
+    print("True alignment: IAGadNGAGV")
+
+    print("\n" + "=-" * 30)
