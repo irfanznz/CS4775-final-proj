@@ -13,10 +13,26 @@ def read_alignment(alignment_file, format):
                     sequences.append('')
                 else:
                     sequences[-1] += line.strip()
-    if format == 'align':
-        with open(alignment_file, 'r') as f:
-            for line in f:
-                sequences.append(line.strip())
+    if format == 'msf':
+        with open(alignment_file, 'r') as file:
+            lines = file.readlines()
+
+        start_processing = False
+        sequences_temp = {}
+        for line in lines:
+            if '//' in line:
+                start_processing = True
+                continue
+            if start_processing:
+                parts = line.split()
+                if parts:
+                    seq_id = parts[0]
+                    seq_data = ''.join(parts[1:])
+                    sequences_temp[seq_id] = sequences_temp.get(
+                        seq_id, '') + seq_data
+
+        sequences = [s. replace('.', '-')
+                     for s in list(sequences_temp.values())]
     return sequences
 
 

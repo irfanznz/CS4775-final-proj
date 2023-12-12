@@ -160,6 +160,7 @@ class ProfileHMM:
         return alignment
 
     def _get_alignment(self, seq, path):
+        print(path)
         alignment = ""
         for i, state in enumerate(path):
             if state == "M":
@@ -264,6 +265,10 @@ def get_transition_counts(multiple_alignment):
     match_groups = [[] for _ in range(match_states)]
     match_index = -1
     for col, match in enumerate(match_pattern):
+        if match_index == -1 and not match:
+            match_groups.append([])
+            match_index += 1
+            match_groups[match_index].append(alignment_columns[col])
         if match:
             match_index += 1
             if col > 0:
@@ -271,7 +276,11 @@ def get_transition_counts(multiple_alignment):
         match_groups[match_index].append(alignment_columns[col])
 
     # Add begin and end states
-    match_groups = [["^" * num_sequences, match_groups[0][0]]] + match_groups
+    if match_pattern[0]:
+        match_groups = [["^" * num_sequences,
+                         match_groups[0][0]]] + match_groups
+    else:
+        match_groups[0].insert(0, "^" * num_sequences)
     match_groups[-1].append("$" * num_sequences)
 
     # Separate match groups into transitions
@@ -305,8 +314,7 @@ def get_transition_counts_helper(transitions):
                  '$' else 'D' if clean_str[1] == '-' else 'M')
             transition_counts[key] += 1
         else:
-            pairs = [clean_str[i:i+2] for i in range(len(string) - 1)]
-
+            pairs = [clean_str[i:i+2] for i in range(len(clean_str) - 1)]
             start_pair = pairs.pop(0)
             start_key = (
                 'B' if start_pair[0] == '^' else 'D' if start_pair[0] == '-' else 'M') + 'I'
@@ -455,9 +463,10 @@ if __name__ == '__main__':
     # [print(f"{em[i]}\n") for i in range(len(em))]
 
     hmm = ProfileHMM(sequences, 1)
-    print("=-" * 30 + "\n")
-    print("Original sequence: IAGADNGAGV")
-    print(f"Computed alignment: {hmm.align_sequence('IAGADNGAGV')}")
-    print("True alignment: IAGadNGAGV")
 
+    print("=-" * 30 + "\n")
+    print("Original sequence: GKGDPKKPRGKMSSYAFFVQTSREEHKKKHPDASVNFSEFSKKCSERWKTMSAKEKGKFEDMAKADKARYEREMKTYIPPKGE")
+    print(
+        f"Computed alignment: {hmm.align_sequence('GKGDPKKPRGKMSSYAFFVQTSREEHKKKHPDASVNFSEFSKKCSERWKTMSAKEKGKFEDMAKADKARYEREMKTYIPPKGE')}")
+    print("True alignment: ---GKGDPKKPRGKMSSYAFFVQTSREEHKKKHPDASVNFSEFSKKCSERWKTMSAKEKGKFEDMAKADKARYEREMKTYIPPKGE----------")
     print("\n" + "=-" * 30)
