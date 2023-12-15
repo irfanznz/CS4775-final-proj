@@ -109,6 +109,7 @@ class ProfileHMM:
         max_prob_state = [
             k for k, v in terminal_probs.items() if v == max_prob][0]
 
+        # print(backpointers)
         return backpointers[max_prob_state][1:] + max_prob_state[-1]
 
     def _get_max(self, prev_probs, residue, curr_state, s):
@@ -452,16 +453,6 @@ if __name__ == '__main__':
     sequences = ra.read_alignment(
         args.alignment_file, args.alignment_file[args.alignment_file.find('.') + 1:])
 
-    # # Print transition matrix
-    # print(f"\n{'=-' * 20}\n\nTRANSITION MATRIX\n\n{'=-' * 20}\n")
-    # tm = get_transition_matrix(sequences, 1)
-    # [print(f"{tm[i]}\n") for i in range(len(tm))]
-
-    # # Print emission matrix
-    # print(f"\n{'=-' * 20}\n\nEMISSION MATRIX\n\n{'=-' * 20}\n")
-    # em = get_emission_matrix(sequences, 1)
-    # [print(f"{em[i]}\n") for i in range(len(em))]
-
     hmm = ProfileHMM(sequences, 1)
 
     print("=-" * 30 + "\n")
@@ -469,4 +460,13 @@ if __name__ == '__main__':
     print(
         f"Computed alignment: {hmm.align_sequence('GKGDPKKPRGKMSSYAFFVQTSREEHKKKHPDASVNFSEFSKKCSERWKTMSAKEKGKFEDMAKADKARYEREMKTYIPPKGE')}")
     print("True alignment: ---GKGDPKKPRGKMSSYAFFVQTSREEHKKKHPDASVNFSEFSKKCSERWKTMSAKEKGKFEDMAKADKARYEREMKTYIPPKGE----------")
-    print("\n" + "=-" * 30)
+    print("\n" + "=-" * 30 + "\n")
+
+    # print("=-" * 30 + "\n")
+    # print("Original sequence: IAGADNGAGFFFFFV")
+    # print(
+    #     f"Computed alignment: {hmm.align_sequence('IAGADNGAGFFFFFV')}")
+    # print("True alignment: IAGadNGAGV")
+    # print("\n" + "=-" * 30 + "\n")
+
+    # [print(f"{i}\n") for i in hmm.transition_matrix]
