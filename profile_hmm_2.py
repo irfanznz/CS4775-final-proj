@@ -39,121 +39,56 @@ class ProfileHMM:
         Given a sequence, returns the most probable path through the profile HMM.
         """
         T = len(seq)
-        M = self.num_match_states
-        STATES = ["0I"] + \
-            [f"{i}{c}" for i in range(1, M + 1) for c in "MDI"]
+        N = self.num_match_states
 
-        vm = [{s: float("-inf") for s in STATES} for _ in range(T)]
-        bp = [{s: "" for s in STATES} for _ in range(T)]
+        viterbi_matrix = [[{"I": float("-inf")}] + [{state: float("-inf")
+                                                    for state in "MDI"} for _ in range(N)] for _ in range(T)]
+        backpointer_matrix = [[{"I": ""}] + [{state: ""
+                                                    for state in "MDI"} for _ in range(N)] for _ in range(T)]
 
+        # Iterate through each row of the viterbi matrix (residues in sequence)
         for t, residue in enumerate(seq):
-            state_probs = vm[t]
-            backpointers = bp[t]
-            prev_state_probs = vm[t-1] if t > 0 else {"0B": 0}
-            prev_backpointers = bp[t-1] if t > 0 else None
+            t_probs = viterbi_matrix[t]
+            t_bp = backpointer_matrix[t]
+            if t > 0:
+                t_prev_probs = viterbi_matrix[t-1]
+                t_prev_bp = backpointer_matrix[t-1]
+
+            # Iterate through each column of the viterbi matrix (states in profile HMM)
             if t == 0:
-                state_probs["0I"] = self.transition_matrix[0]["B"]["I"] + \
-                    self.i_emission_matrix[residue]
-                state_probs["1M"] = self.transition_matrix[0]["B"]["M"] + \
-                    self.m_emission_matrix[0][residue]
-                state_probs["1D"] = self.transition_matrix[0]["B"]["D"] + \
-                    self._d_emission_matrix(residue)
-                backpointers["0I"] = "B"
-                backpointers["1M"] = "B"
-                backpointers["1D"] = "B"
-            else:
-                for state in STATES:
-                    state_type = state[-1]
-                    state_num = int(state[:-1])
+                t_probs[0]["I"] = self.transition_matrix[0]["B"]["I"] + self.i_emission_matrix[residue]
+                t_probs[1]["M"] = self.transition_matrix[0]["B"]["M"] + self.m_emission_matrix[0][residue]
+                t_probs[1]["D"] = self.transition_matrix[0]["B"]["D"]
+                continue
 
-                    if state_type == "M" and state_num <= t + 1:
-                        if state_num == 1:
-                            state_probs[state] = prev_state_probs["0I"] + \
-                                self.transition_matrix[0]["I"]["M"] + \
-                                self.m_emission_matrix[0][residue]
-                        p, s = self._get_max(
-                            prev_state_probs, residue, state, "M")
-                        state_probs[state] = p
-                        backpointers[state] = prev_backpointers[s] + s[-1]
+            for n, probs in enumerate(t_probs):
+                if n == 0:
+                    probs["I"] = t_prev_probs[n]["I"] + self.transition_matrix[n]["I"]["I"]
+                    t_bp[n]["I"] = t_prev_bp[n]["I"] + "I"
+                else:
+                    for s in probs:
+                        max_prev_prob, max_prev_state = self._get_max_prev(t_prev_probs[n-1])
+                        max_curr_prob, max_curr_state = self._get_max_prev(t_prev_probs[n])
+                        if s == "M":
+                            probs[s] = max_prev_prob + self.transition_matrix[n-1][max_prev_state]["M"] + self.m_emission_matrix[n-1][residue]
+                            t_bp[n][s] = t_prev_bp[n-1][max_prev_state] + s
+                        elif s == "D":
+                            probs[s] = max_prev_prob + self.transition_matrix[n-1][max_prev_state]["D"]
+                            t_bp[n][s] = t_prev_bp[n-1][max_prev_state] + s
+                        elif s == "I":
+                            probs[s] = max_curr_prob + self.transition_matrix[n][max_curr_state]["I"] + self.i_emission_matrix[residue]
+                            t_bp[n][s] = t_prev_bp[n][max_curr_state] + s
 
-                    if state_type == "D" and state_num <= t + 1:
-                        if state_num == 1:
-                            state_probs[state] = prev_state_probs["0I"] + \
-                                self.transition_matrix[0]["I"]["D"] + \
-                                self._d_emission_matrix(residue)
-                        p, s = self._get_max(
-                            prev_state_probs, residue, state, "D")
-                        state_probs[state] = p
-                        backpointers[state] = prev_backpointers[s] + s[-1]
+        [print(f"{a}\n") for a in backpointer_matrix]     
+        [print(f"{a}\n") for a in viterbi_matrix]     
 
-                    if state_type == "I":
-                        if not state_num:
-                            state_probs[state] = prev_state_probs["0I"] + \
-                                self.transition_matrix[0]["I"]["I"] + \
-                                self.i_emission_matrix[residue]
-                            backpointers[state] = prev_backpointers["0I"] + "I"
-                        else:
-                            p, s = self._get_max_ins(
-                                state_probs, residue, state)
-                            state_probs[state] = p
-                            backpointers[state] = prev_backpointers[s] + s[-1]
-
-            # print("\n" + "=-" * 30)
-            # print(f"\n{state_probs}\n")
-            # print(f"{backpointers}\n")
-            # print("=-" * 30)
-
-        terminal_states = [str(M) + c for c in "MDI"]
-        terminal_probs = {k: vm[-1][k] for k in terminal_states}
-        max_prob = max(terminal_probs.values())
-        max_prob_state = [
-            k for k, v in terminal_probs.items() if v == max_prob][0]
-
-        [print(f"{i}: {backpointers[i]}\n") for i in backpointers]
-        return backpointers[max_prob_state][1:] + max_prob_state[-1]
-
-    def _get_max(self, prev_probs, residue, curr_state, s):
-        curr_state_num = int(curr_state[:-1])
-        potential_probs = {}
-        for prev_state in prev_probs.keys():
-            prev_state_type = prev_state[-1]
-            prev_state_num = int(prev_state[:-1])
-            if prev_state_num == curr_state_num - 1:
-                ep = self.m_emission_matrix[curr_state_num -
-                                            1][residue] if s == "M" else self._d_emission_matrix(residue)
-                potential_probs[prev_state] = prev_probs[prev_state] + \
-                    self.transition_matrix[prev_state_num][prev_state_type][s] + ep
-
-         # Include deletion states in potential probabilities
-            # if prev_state_num == curr_state_num:
-            #     potential_probs[prev_state] = prev_probs[prev_state] + \
-            #         self.transition_matrix[prev_state_num][prev_state_type]["D"]
-
-        max_prob = max(potential_probs.values())
-        max_prob_state = [
-            k for k, v in potential_probs.items() if v == max_prob][0]
-        return max_prob, max_prob_state
-
-    def _get_max_ins(self, probs, residue, state):
-        ins_state_num = int(state[:-1])
-        potential_probs = {}
-        for state in probs.keys():
-            state_type = state[-1]
-            state_num = int(state[:-1])
-            if state_num == ins_state_num:
-                potential_probs[state] = probs[state] + \
-                    self.i_emission_matrix[residue]
-                if state_type == "I":
-                    potential_probs[state] += self.transition_matrix[state_num]["I"]["I"]
-                elif state_type == "M":
-                    potential_probs[state] += self.transition_matrix[state_num]["M"]["I"]
-                elif state_type == "D":
-                    potential_probs[state] += self.transition_matrix[state_num]["D"]["I"]
-
-        max_prob = max(potential_probs.values())
-        max_prob_state = [
-            k for k, v in potential_probs.items() if v == max_prob][0]
-        return max_prob, max_prob_state
+    def _get_max_prev(self, probs):
+        """
+        Given a dictionary of probabilities, returns the maximum probability and the corresponding previous state.
+        """
+        max_prob = max(probs.values())
+        max_prev_state = [k for k, v in probs.items() if v == max_prob][0]
+        return (max_prob, max_prev_state)
 
     def align_sequences(self, sequences):
         """
@@ -474,6 +409,6 @@ if __name__ == '__main__':
     print("True alignment: IAGadNGAGV")
     print("\n" + "=-" * 30 + "\n")
 
-    # [print(f"{i}\n") for i in hmm.transition_matrix]
+    [print(f"{i}\n") for i in hmm.transition_matrix]
 
-    [print(f"{i}\n") for i in hmm.m_emission_matrix]
+    # [print(f"{i}\n") for i in hmm.m_emission_matrix]
