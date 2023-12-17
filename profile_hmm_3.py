@@ -2,6 +2,7 @@ import argparse
 import json
 import numpy as np
 import read_alignment as ra
+import re
 
 
 TRANSITIONS = ("BM", "BI", "BD", "MM", "MI", "MD", "IM",
@@ -39,121 +40,98 @@ class ProfileHMM:
         Given a sequence, returns the most probable path through the profile HMM.
         """
         T = len(seq)
-        M = self.num_match_states
-        STATES = ["0I"] + \
-            [f"{i}{c}" for i in range(1, M + 1) for c in "MDI"]
+        STATES = ["B0", "I0"] + [f"{S}{i}" for i in range(
+            1, self.num_match_states + 1) for S in "MID"] + ["E-1"]
 
-        vm = [{s: float("-inf") for s in STATES} for _ in range(T)]
-        bp = [{s: "" for s in STATES} for _ in range(T)]
+        viterbi_matrix = {state: [float("-inf")
+                                  for _ in range(T+1)] for state in STATES}
+        viterbi_matrix["B0"][0] = 0
+
+        self.print_vm(viterbi_matrix)
 
         for t, residue in enumerate(seq):
-            state_probs = vm[t]
-            backpointers = bp[t]
-            prev_state_probs = vm[t-1] if t > 0 else {"0B": 0}
-            prev_backpointers = bp[t-1] if t > 0 else None
-            if t == 0:
-                state_probs["0I"] = self.transition_matrix[0]["B"]["I"] + \
-                    self.i_emission_matrix[residue]
-                state_probs["1M"] = self.transition_matrix[0]["B"]["M"] + \
-                    self.m_emission_matrix[0][residue]
-                state_probs["1D"] = self.transition_matrix[0]["B"]["D"] + \
-                    self._d_emission_matrix(residue)
-                backpointers["0I"] = "B"
-                backpointers["1M"] = "B"
-                backpointers["1D"] = "B"
-            else:
-                for state in STATES:
-                    state_type = state[-1]
-                    state_num = int(state[:-1])
-
-                    if state_type == "M" and state_num <= t + 1:
-                        if state_num == 1:
-                            state_probs[state] = prev_state_probs["0I"] + \
-                                self.transition_matrix[0]["I"]["M"] + \
-                                self.m_emission_matrix[0][residue]
-                        p, s = self._get_max(
-                            prev_state_probs, residue, state, "M")
-                        state_probs[state] = p
-                        backpointers[state] = prev_backpointers[s] + s[-1]
-
-                    if state_type == "D" and state_num <= t + 1:
-                        if state_num == 1:
-                            state_probs[state] = prev_state_probs["0I"] + \
-                                self.transition_matrix[0]["I"]["D"] + \
-                                self._d_emission_matrix(residue)
-                        p, s = self._get_max(
-                            prev_state_probs, residue, state, "D")
-                        state_probs[state] = p
-                        backpointers[state] = prev_backpointers[s] + s[-1]
-
-                    if state_type == "I":
-                        if not state_num:
-                            state_probs[state] = prev_state_probs["0I"] + \
-                                self.transition_matrix[0]["I"]["I"] + \
-                                self.i_emission_matrix[residue]
-                            backpointers[state] = prev_backpointers["0I"] + "I"
-                        else:
-                            p, s = self._get_max_ins(
-                                state_probs, residue, state)
-                            state_probs[state] = p
-                            backpointers[state] = prev_backpointers[s] + s[-1]
-
-            # print("\n" + "=-" * 30)
-            # print(f"\n{state_probs}\n")
-            # print(f"{backpointers}\n")
-            # print("=-" * 30)
-
-        terminal_states = [str(M) + c for c in "MDI"]
-        terminal_probs = {k: vm[-1][k] for k in terminal_states}
-        max_prob = max(terminal_probs.values())
-        max_prob_state = [
-            k for k, v in terminal_probs.items() if v == max_prob][0]
-
-        # print(backpointers)
-        return backpointers[max_prob_state][1:] + max_prob_state[-1]
-
-    def _get_max(self, prev_probs, residue, curr_state, s):
-        curr_state_num = int(curr_state[:-1])
-        potential_probs = {}
-        for prev_state in prev_probs.keys():
-            prev_state_type = prev_state[-1]
-            prev_state_num = int(prev_state[:-1])
-            if prev_state_num == curr_state_num - 1:
-                ep = self.m_emission_matrix[curr_state_num -
-                                            1][residue] if s == "M" else self._d_emission_matrix(residue)
-                potential_probs[prev_state] = prev_probs[prev_state] + \
-                    self.transition_matrix[prev_state_num][prev_state_type][s] + ep
-
-         # Include deletion states in potential probabilities
-            # if prev_state_num == curr_state_num:
-            #     potential_probs[prev_state] = prev_probs[prev_state] + \
-            #         self.transition_matrix[prev_state_num][prev_state_type]["D"]
-
-        max_prob = max(potential_probs.values())
-        max_prob_state = [
-            k for k, v in potential_probs.items() if v == max_prob][0]
-        return max_prob, max_prob_state
-
-    def _get_max_ins(self, probs, residue, state):
-        ins_state_num = int(state[:-1])
-        potential_probs = {}
-        for state in probs.keys():
-            state_type = state[-1]
-            state_num = int(state[:-1])
-            if state_num == ins_state_num:
-                potential_probs[state] = probs[state] + \
-                    self.i_emission_matrix[residue]
-                if state_type == "I":
-                    potential_probs[state] += self.transition_matrix[state_num]["I"]["I"]
+            for state in STATES:
+                state_type, state_num = self.get_state_and_num(state)
+                if state == "B0" or t == 0:
+                    continue
+                elif state == "I0":
+                    if t == 1:
+                        viterbi_matrix[state][t] = viterbi_matrix["B0"][t] + \
+                            self.i_emission_matrix[residue]
+                    else:
+                        viterbi_matrix[state][t] = viterbi_matrix["I0"][t-1] + \
+                            self.transition_matrix[0]["I"]["I"] + \
+                            self.i_emission_matrix[residue]
                 elif state_type == "M":
-                    potential_probs[state] += self.transition_matrix[state_num]["M"]["I"]
+                    if state_num == 1:
+                        if t == 1:
+                            viterbi_matrix[state][t] = viterbi_matrix["B0"][t] + \
+                                self.transition_matrix[0]["B"]["M"] + \
+                                self.m_emission_matrix[t][residue]
+                        else:
+                            viterbi_matrix[state][t] = viterbi_matrix["I0"][t-1] + \
+                                self.transition_matrix[0]["I"]["M"] + \
+                                self.m_emission_matrix[1][residue]
+                    else:
+                        [print(f"{i}\n") for i in self.transition_matrix]
+                        print(t-1)
+                        max_prob, max_prev_state = self.get_max_prob(
+                            {
+                                f"M{state_num-1}": viterbi_matrix[f"M{state_num-1}"][t-1] + self.transition_matrix[t-1]["M"]["M"] + self.m_emission_matrix[t][residue],
+                                f"I{state_num-1}": viterbi_matrix[f"I{state_num-1}"][t-1] + self.transition_matrix[t-1]["I"]["M"] + self.m_emission_matrix[t][residue],
+                                f"D{state_num-1}": viterbi_matrix[f"D{state_num-1}"][t-1] + self.transition_matrix[t-1]["D"]["M"] + self.m_emission_matrix[t][residue]
+                            }
+                        )
+                        viterbi_matrix[state][t] = max_prob
                 elif state_type == "D":
-                    potential_probs[state] += self.transition_matrix[state_num]["D"]["I"]
+                    if state_num == 1:
+                        if t == 1:
+                            viterbi_matrix[state][t] = viterbi_matrix["B0"][t] + \
+                                self.transition_matrix[0]["B"]["D"]
+                        else:
+                            viterbi_matrix[state][t] = viterbi_matrix["I0"][t-1] + \
+                                self.transition_matrix[0]["I"]["D"]
+                    else:
+                        max_prob, max_prev_state = self.get_max_prob(
+                            {
+                                f"M{state_num-1}": viterbi_matrix[f"M{state_num-1}"][t-1] + self.transition_matrix[t-1]["M"]["D"],
+                                f"I{state_num-1}": viterbi_matrix[f"I{state_num-1}"][t-1] + self.transition_matrix[t-1]["I"]["D"],
+                                f"D{state_num-1}": viterbi_matrix[f"D{state_num-1}"][t-1] + self.transition_matrix[t-1]["D"]["D"]
+                            }
+                        )
+                        viterbi_matrix[state][t] = max_prob
+                elif state_type == "I":
+                    max_prob, max_prev_state = self.get_max_prob(
+                        {
+                            f"M{state_num}": viterbi_matrix[f"M{t}"][t-1] + self.transition_matrix[t]["M"]["I"] + self.i_emission_matrix[residue],
+                            f"I{state_num}": viterbi_matrix[f"I{t}"][t-1] + self.transition_matrix[t]["I"]["I"] + self.i_emission_matrix[residue],
+                            f"D{state_num}": viterbi_matrix[f"D{t}"][t-1] + self.transition_matrix[t]["D"]["I"] + self.i_emission_matrix[residue]
+                        }
+                    )
+                    viterbi_matrix[state][t] = max_prob
 
-        max_prob = max(potential_probs.values())
-        max_prob_state = [
-            k for k, v in potential_probs.items() if v == max_prob][0]
-        return max_prob, max_prob_state
+        self.print_vm(viterbi_matrix)
+
+    def print_vm(self, viterbi_matrix):
+        print("\n")
+        [print(f"{k}: {[round(i, 2) for i in v]}")
+         for k, v in viterbi_matrix.items()]
+        print("\n")
+
+    def get_state_and_num(self, s):
+        match = re.match(r'^([ A-Za-z]+)(-?[0-9]+)$', s)
+        if match:
+            return match.group(1), int(match.group(2))
+        else:
+            return None, None
+
+    def get_max_prob(self, probs):
+        """
+        Given a dictionary of probabilities, returns the maximum probability and the state.
+        """
+        max_prob = max(probs.values())
+        max_state = [k for k, v in probs.items() if v == max_prob][0]
+        return (max_prob, max_state)
 
     def align_sequences(self, sequences):
         """
@@ -166,6 +144,7 @@ class ProfileHMM:
         return alignment
 
     def _get_alignment(self, seq, path):
+        print(path)
         alignment = ""
         for i, state in enumerate(path):
             if state == "M":
@@ -352,8 +331,9 @@ def get_transition_matrix(multiple_alignment, pseudocount=0.1):
         totals = get_transition_totals(counts)
         possible_transitions = get_transition_possibilities(transitions)
         for key in transitions:
-            transitions[key] = round(np.log((counts[key] + pseudocount) /
-                                            (totals[key[0]] + (possible_transitions[key[0]] * pseudocount))), 3)
+            transitions[key] = np.log((counts[key] + pseudocount) /
+                                      (totals[key[0]] + (possible_transitions[key[0]] * pseudocount)))
+
     # PATCHWORK FIX
     for i in range(len(transition_matrix)):
         new_t_mtx = {}
@@ -441,7 +421,7 @@ def get_emission_matrix(multiple_alignment, pseudocount=0.1):
 
     for j, col in enumerate(emission_counts):
         emission_probabilities = {
-            a: round(np.log((col[a] + pseudocount) / (emission_totals[j] + len(AMINO_ACIDS) * pseudocount)), 3) for a in AMINO_ACIDS}
+            a: np.log((col[a] + pseudocount) / (emission_totals[j] + len(AMINO_ACIDS * pseudocount))) for a in AMINO_ACIDS}
         emission_probabilities['-'] = float("-inf")
         emission_matrix.append(emission_probabilities)
 
@@ -449,9 +429,6 @@ def get_emission_matrix(multiple_alignment, pseudocount=0.1):
 
 
 if __name__ == '__main__':
-    """
-    Most of the code below is for testing purposes. 
-    """
     parser = argparse.ArgumentParser()
     parser.add_argument('alignment_file', type=str,
                         help='Path to the alignment file')
@@ -475,4 +452,6 @@ if __name__ == '__main__':
     print("True alignment: IAGadNGAGV")
     print("\n" + "=-" * 30 + "\n")
 
-    # [print(f"{i}\n") for i in hmm.transition_matrix]
+    [print(f"{i}\n") for i in hmm.transition_matrix]
+
+    # [print(f"{i}\n") for i in hmm.m_emission_matrix]
