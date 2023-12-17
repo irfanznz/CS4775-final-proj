@@ -1,5 +1,5 @@
 # Ignore pycache directory
-pycache/
+__pycache__/
 
 # Ignore bb3_release directory
 bb3_release/
