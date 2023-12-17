@@ -109,7 +109,6 @@ class ProfileHMM:
         max_prob_state = [
             k for k, v in terminal_probs.items() if v == max_prob][0]
 
-        # print(backpointers)
         return backpointers[max_prob_state][1:] + max_prob_state[-1]
 
     def _get_max(self, prev_probs, residue, curr_state, s):
@@ -161,7 +160,6 @@ class ProfileHMM:
         return alignment
 
     def _get_alignment(self, seq, path):
-        print(path)
         alignment = ""
         for i, state in enumerate(path):
             if state == "M":
@@ -348,9 +346,8 @@ def get_transition_matrix(multiple_alignment, pseudocount=0.1):
         totals = get_transition_totals(counts)
         possible_transitions = get_transition_possibilities(transitions)
         for key in transitions:
-            transitions[key] = np.log((counts[key] + pseudocount) /
-                                      (totals[key[0]] + (possible_transitions[key[0]] * pseudocount)))
-
+            transitions[key] = round(np.log((counts[key] + pseudocount) /
+                                            (totals[key[0]] + (possible_transitions[key[0]] * pseudocount))), 3)
     # PATCHWORK FIX
     for i in range(len(transition_matrix)):
         new_t_mtx = {}
@@ -438,7 +435,7 @@ def get_emission_matrix(multiple_alignment, pseudocount=0.1):
 
     for j, col in enumerate(emission_counts):
         emission_probabilities = {
-            a: np.log((col[a] + pseudocount) / (emission_totals[j] + len(AMINO_ACIDS * pseudocount))) for a in AMINO_ACIDS}
+            a: round(np.log((col[a] + pseudocount) / (emission_totals[j] + len(AMINO_ACIDS) * pseudocount)), 3) for a in AMINO_ACIDS}
         emission_probabilities['-'] = float("-inf")
         emission_matrix.append(emission_probabilities)
 
@@ -446,6 +443,9 @@ def get_emission_matrix(multiple_alignment, pseudocount=0.1):
 
 
 if __name__ == '__main__':
+    """
+    Most of the code below is for testing purposes. 
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument('alignment_file', type=str,
                         help='Path to the alignment file')
@@ -469,4 +469,4 @@ if __name__ == '__main__':
     # print("True alignment: IAGadNGAGV")
     # print("\n" + "=-" * 30 + "\n")
 
-    # [print(f"{i}\n") for i in hmm.transition_matrix]
+    [print(f"{i}\n") for i in hmm.transition_matrix]

@@ -1,21 +1,50 @@
 # CS4775-final-proj
 
-## Introduction
+## Description
 
-This is a project where we try to reimplement a profile-HMM based multiple sequence alignment program.
+This script is designed to align a set of sequences to a profile hidden Markov model (HMM) constructed from a given multiple sequence alignment (MSA) and a specified pseudocount. It takes an MSA file, a pseudocount value, and a file containing sequences as input. The output includes the details of the profile HMM and the aligned sequences.
 
-## NEED TO DO:
+## Requirements
 
-### Model-related stuff
+Python environment.
+Input files: MSA file and sequences file in a fasta format.
 
--   Get background probabilities of amino acids for use as emission probabilities for insert states
--   Convert probabilities into log form
+## Usage
 
-### MSA-related stuff
+Run the script from the command line with the following syntax:
 
--   Implement Viterbi algorithm for finding the most likely path the sequence takes in the HMM
--   This corresponds to the alignment of the sequence(s) to the model, so we're basically done here
+```
+python main.py <msa_path> <pseudocount> <sequences_path>
+```
 
-### Benchmarking
+## Arguments
 
--   Use BAliBASE to benchmark our alignments (mostly for use in slides, pretty much plug and play BAliBASE has a scoring program already we can compare our alignments to that of MUSCLE or something)
+`msa_path`: Path to the MSA file.
+`pseudocount`: The pseudocount value to be added to each count in the profile HMM.
+`sequences_path`: Path to the file containing sequences to be aligned.
+
+## Example
+
+```
+python main.py test_msa.fasta 1 test_seq.fasta
+```
+
+## Output
+
+The script outputs:
+
+Details of the Profile HMM:
+
+- Pseudocount used.
+- Number of states in the HMM.
+- Transition matrix of the HMM.
+- Emissions matrix for match states in the HMM.
+
+Sequence Alignment:
+
+- List of unaligned sequences.
+- List of sequences aligned to the profile HMM.
+
+## Note
+
+Ensure that the input files are in a format compatible with the read_alignment function used in the script. The format is inferred from the file extension (we only support fasta files for now but this is easily extensible). The ProfileHMM class is used to create and use the profile HMM, and it requires the MSA and pseudocount as inputs.
